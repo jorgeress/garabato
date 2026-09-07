@@ -1,9 +1,18 @@
-# Pipeline de vídeo faceless
+# Garabato
+
+**Escribes el guion, sale el vídeo montado.**
 
 Monté esto para no tener que editar a mano cada vídeo de un canal de YouTube
 sin cara: vídeos explicativos de psicología y comportamiento, narrados, con
 ilustraciones de monigote y subtítulos quemados. Escribo el guion y el resto
 lo hace el pipeline: voz, imágenes, subtítulos y montaje final.
+
+![Del guion al fotograma](docs/img/script-to-frame.png)
+
+Cada frase del guion lleva delante una línea de campos que describe su imagen.
+Los campos son vocabulario cerrado, así que la misma línea da siempre el mismo
+fotograma. Esos dos tipos de plano los dibuja el propio repo con PIL, sin GPU y
+sin modelo, cuando `CLIP_SOURCE` es `comfyui`.
 
 La idea era resolver el cuello de botella real. Grabar la voz y buscar o
 dibujar una imagen por cada frase es lo que hace que un vídeo de ocho minutos
@@ -31,6 +40,28 @@ python run_pipeline.py [slug]
 
 Cada paso es idempotente: si vuelves a lanzarlo se salta lo que ya está hecho,
 así que puedes cortar por la mitad y retomar, o rehacer solo un tramo.
+
+Esa lista es el orden de ejecución, pero deja fuera las dos decisiones que
+de verdad sostienen el pipeline:
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/img/architecture-dark.svg">
+  <img alt="Arquitectura: el reloj único y la bifurcación de la imagen" src="docs/img/architecture-light.svg">
+</picture>
+
+**El reloj.** `generate_voice.py` concatena el audio sin huecos y deja en
+`beat_timings.json` el inicio y el fin reales de cada beat. Las imágenes y los
+subtítulos no cuentan el tiempo por su cuenta: los dos leen ese archivo. Es la
+razón de que no se separen del audio, y de que un vídeo generado antes de que
+existiera no haya manera de sincronizarlo sin rehacerlo.
+
+**La bifurcación.** Dónde sale cada imagen no se decide al generar los clips
+sino antes, al construir los prompts (`generate_image_prompts.py:750`). Con
+`gemini` o `manual` se manda un prompt en lenguaje natural para *todos* los
+beats, y el modelo ilustra también los rótulos y los diagramas. Con `comfyui`
+esos dos tipos salen con prompt vacío y los dibuja PIL, y solo los planos de
+escena pasan por el catálogo cerrado. Mismo guion, dos caminos distintos: por
+eso los rótulos no se ven igual según el backend.
 
 ## El formato de guion
 
@@ -86,6 +117,7 @@ se parezca a la que funciona.
 | Voz | Chatterbox, en local, sobre GPU |
 | Imágenes | Gemini 2.5 Flash Image por API, o ComfyUI con Flux Schnell en local |
 | Subtítulos | `stable-ts`, que baja el modelo Whisper `base` la primera vez |
+| Tipografía | Ninguna. Usa la que ya tengas; ver [Tipografía](#tipografía) |
 
 ```bash
 pip install -r requirements.txt
@@ -104,6 +136,28 @@ GEMINI_API_KEY = "..."
 ```
 
 `config.py` mira primero el entorno y luego el archivo.
+
+### Tipografía
+
+No hay que instalar nada. `config.py` busca por nombre de archivo en los
+directorios de fuentes de Linux, macOS y Windows, y termina en una negrita
+genérica (DejaVu Sans, Liberation Sans, Noto Sans, Arial) que existe en
+cualquier máquina. Si no encuentra ninguna, los renderers caen a la fuente por
+defecto de PIL en vez de reventar.
+
+Para usar la tuya, cualquiera de las dos:
+
+1. Deja el `.ttf` en `assets/fonts/`. Lo que haya ahí gana sobre todo lo demás,
+   sin instalar y sin tocar código. Esa carpeta está en `.gitignore`.
+2. Pon el nombre del archivo, sin extensión, al principio de `FONT_PATHS_BOLD`
+   o `FONT_PATHS_REGULAR` en `config.py`.
+
+Las manuscritas que están arriba de la lista (Caveat, Architects Daughter,
+Patrick Hand) son opcionales: si algún día las instalas, se cogen solas y el
+texto pega mejor con el monigote.
+
+Los subtítulos van aparte, porque quien los pinta al quemarlos es libass y
+resuelve por nombre de familia, no por ruta: eso es `SUBTITLE_STYLE["font"]`.
 
 ### Los tres backends de imagen
 
@@ -149,10 +203,27 @@ run_pipeline.py               Orquestador de los siete pasos
 │   ├── beat_format.md        Especificación de campos y catálogos
 │   └── generate.md           Prompt de generación de guion
 │
-├── docs/decisiones.md        Por qué cada cosa está como está
-├── assets/sprites/           Iconos PNG con alfa
+├── tools/
+│   └── make_readme_figures.py  Regenera docs/img/ con los renderers del repo
+│
+├── docs/
+│   ├── decisiones.md         Por qué cada cosa está como está
+│   └── img/                  Figuras del README
+│
+├── assets/
+│   ├── sprites/              Iconos PNG con alfa
+│   ├── fonts/                Tu tipografía, si quieres una (sin versionar)
+│   └── character_ref.png     Hoja de modelo del monigote
+│
 └── output/<slug>/            Todo lo que genera el pipeline
 ```
+
+Las figuras de este README no son capturas hechas a mano: salen de
+`python tools/make_readme_figures.py`. La de los fotogramas llama a
+`_text_frame.py` y `_diagram_frame.py`, los mismos módulos que usa el pipeline,
+así que si cambias el estilo la regeneras y el README deja de mentir. El
+diagrama se dibuja en el mismo script, en dos versiones para el tema claro y el
+oscuro de GitHub.
 
 ## Decisiones que no se ven leyendo el código
 
@@ -206,8 +277,6 @@ Lo que falta o está a medias:
 - La voz va con la de serie de Chatterbox. Falta grabar o clonar una propia y
   apuntarla en `CHATTERBOX_REF_AUDIO`.
 - La música de fondo (`BACKGROUND_MUSIC_PATH`) está sin poner.
-- Los rótulos esperan la tipografía Montserrat ExtraBold, que no viene en el
-  repo.
 - El entrenamiento de LoRA en `tools/lora_training/` quedó obsoleto cuando pasé
   a generar imágenes con referencia de personaje. Lo dejo porque el código de
   preparación del dataset y las pruebas sirven, pero ya no forma parte del

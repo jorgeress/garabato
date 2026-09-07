@@ -28,6 +28,10 @@ build/
 *.pth
 *.bin
 
+# User-supplied typefaces (drop them in, they aren't part of the repo)
+assets/fonts/*
+!assets/fonts/.gitkeep
+
 # Downloaded model configs (fetched on demand, not versioned)
 tools/lora_training/sd15_diffusers/
 

@@ -152,41 +152,70 @@ STYLE_PALETTE_B = {
     "chart_title":       (245, 245, 245),
 }
 
-# ── Font search paths: handwriting fonts first (install from Google Fonts) ───
-# Priority: Caveat > Architects Daughter > Patrick Hand > system fallbacks.
-# Download TTF from fonts.google.com and copy to C:/Windows/Fonts/ to activate.
-# If none are installed, falls back to Impact/Arial automatically, no code change needed.
-_USER_FONTS = "C:/Users/jorge/AppData/Local/Microsoft/Windows/Fonts"
-FONT_PATHS_BOLD = [
-    # User fonts directory (no admin needed, installed via Windows font manager)
-    f"{_USER_FONTS}/Caveat-Bold.ttf",
-    f"{_USER_FONTS}/CaveatBrush-Regular.ttf",
-    f"{_USER_FONTS}/ArchitectsDaughter-Regular.ttf",
-    f"{_USER_FONTS}/PatrickHand-Regular.ttf",
-    # System fonts fallback
-    "C:/Windows/Fonts/Caveat-Bold.ttf",
-    "C:/Windows/Fonts/CaveatBrush-Regular.ttf",
-    "C:/Windows/Fonts/ArchitectsDaughter-Regular.ttf",
-    "C:/Windows/Fonts/PatrickHand-Regular.ttf",
-    "C:/Windows/Fonts/impact.ttf",
-    "C:/Windows/Fonts/arialbd.ttf",
-    "C:/Windows/Fonts/calibrib.ttf",
-    "C:/Windows/Fonts/verdanab.ttf",
-    "C:/Windows/Fonts/arial.ttf",
+# ── Fonts ────────────────────────────────────────────────────────────────────
+# Nothing to install. The search below ends in a generic bold sans that ships
+# with every OS, so the renderers always find something usable.
+#
+# To use your own typeface, pick either option:
+#   1. Drop the .ttf/.otf into assets/fonts/. Anything there wins over the
+#      system fonts, no code change and no install needed.
+#   2. Add its file name (without extension) to the front of the lists below.
+#
+# The hand-drawn faces at the top are optional and match the stickman style;
+# they get picked up automatically if you ever install them (fonts.google.com).
+FONT_DIRS = [
+    _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "assets", "fonts"),
+    # Linux
+    "/usr/share/fonts", "/usr/local/share/fonts",
+    _os.path.expanduser("~/.local/share/fonts"), _os.path.expanduser("~/.fonts"),
+    # macOS
+    "/System/Library/Fonts", "/Library/Fonts",
+    _os.path.expanduser("~/Library/Fonts"),
+    # Windows
+    "C:/Windows/Fonts",
+    _os.path.expanduser("~/AppData/Local/Microsoft/Windows/Fonts"),
 ]
-FONT_PATHS_REGULAR = [
-    f"{_USER_FONTS}/Caveat-Regular.ttf",
-    f"{_USER_FONTS}/CaveatBrush-Regular.ttf",
-    f"{_USER_FONTS}/ArchitectsDaughter-Regular.ttf",
-    f"{_USER_FONTS}/PatrickHand-Regular.ttf",
-    "C:/Windows/Fonts/Caveat-Regular.ttf",
-    "C:/Windows/Fonts/CaveatBrush-Regular.ttf",
-    "C:/Windows/Fonts/ArchitectsDaughter-Regular.ttf",
-    "C:/Windows/Fonts/PatrickHand-Regular.ttf",
-    "C:/Windows/Fonts/calibri.ttf",
-    "C:/Windows/Fonts/arial.ttf",
-    "C:/Windows/Fonts/verdana.ttf",
-]
+
+_FONT_INDEX: dict[str, str] | None = None
+
+
+def _font_index() -> dict[str, str]:
+    """File name (lowercased, no extension) → full path. First directory wins."""
+    global _FONT_INDEX
+    if _FONT_INDEX is None:
+        _FONT_INDEX = {}
+        for directory in FONT_DIRS:
+            if not _os.path.isdir(directory):
+                continue
+            for root, _dirs, files in _os.walk(directory):
+                for name in files:
+                    stem, ext = _os.path.splitext(name)
+                    if ext.lower() in (".ttf", ".otf", ".ttc"):
+                        _FONT_INDEX.setdefault(stem.lower(), _os.path.join(root, name))
+    return _FONT_INDEX
+
+
+def find_fonts(*names: str) -> list[str]:
+    """Resolve font file names to full paths, in the order given, skipping
+    the ones that aren't present on this machine."""
+    index = _font_index()
+    return [path for name in names if (path := index.get(name.lower()))]
+
+
+# Display face: text frames, diagram labels, sprite captions, thumbnails.
+FONT_PATHS_BOLD = find_fonts(
+    # Optional hand-drawn faces, only used if installed.
+    "Caveat-Bold", "CaveatBrush-Regular", "ArchitectsDaughter-Regular", "PatrickHand-Regular",
+    # Generic bold sans. At least one of these exists on any OS.
+    "DejaVuSans-Bold", "LiberationSans-Bold", "NotoSans-Bold",
+    "Arial Bold", "arialbd", "Helvetica", "impact", "calibrib", "verdanab",
+)
+
+FONT_PATHS_REGULAR = find_fonts(
+    "Caveat-Regular", "CaveatBrush-Regular", "ArchitectsDaughter-Regular", "PatrickHand-Regular",
+    "DejaVuSans", "LiberationSans-Regular", "NotoSans-Regular",
+    "Arial", "arial", "Helvetica", "calibri", "verdana",
+)
 
 # ── Active style: change all four lines together when switching ──────────────
 # Style A: white background hand-drawn stickman (currently active)
@@ -245,7 +274,9 @@ BURN_SUBTITLES  = True   # False = generate .srt/.ass but skip burning into vide
 UPLOAD_SRT      = True   # reminder: upload subtitles.srt to YouTube Studio manually
 
 SUBTITLE_STYLE = {
-    "font":          "Montserrat ExtraBold",  # fallback: "Arial Bold"
+    # Resolved by name by libass when burning, not by file path. Any family
+    # installed on the machine works; swap it for whatever you prefer.
+    "font":          "DejaVu Sans",            # widely available; e.g. "Arial", "Impact"
     "font_size":     52,
     "color_base":    "&H00FFFFFF",             # white
     "color_active":  "&H0000FFFF",             # yellow (BGR in .ass: 00FFFF = yellow)

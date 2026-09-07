@@ -51,6 +51,12 @@ def _load_sprite(name: str, target_size: int) -> Image.Image | None:
         path = os.path.join(_SPRITES_DIR, f"{name}{suffix}")
         if os.path.exists(path):
             img = Image.open(path).convert("RGBA")
+            # Sprites are 1024x1024 with a lot of transparent margin, and the
+            # margin differs per icon. Crop to the drawing before scaling, or
+            # symbols come out small and at inconsistent sizes next to each other.
+            bbox = img.getchannel("A").getbbox()
+            if bbox:
+                img = img.crop(bbox)
             ratio = target_size / max(img.width, img.height)
             new_w = max(1, int(img.width  * ratio))
             new_h = max(1, int(img.height * ratio))
